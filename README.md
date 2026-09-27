@@ -1,5 +1,7 @@
 # Tiny Planet — Shrines of the Blight
 
+**▶ [Play it](https://jeevan2410.github.io/Tiny-Planet-Action-RPG/)**
+
 A compact 3D action-RPG that takes place on the surface of a small round world.
 You walk all the way around it, fight the blight, level up, find gear, take on a
 handful of quests, and cure four corrupted shrines. Progress survives a page
@@ -226,6 +228,13 @@ Deliberately small: four stats and one level, no skill tree, three enemy types p
 a boss variant, two equipment slots, seven quests, dialogue that colours the
 exchange rather than forking the story. The aim was a complete, finishable small
 RPG rather than a framework.
+
+## Deploying
+
+Every push to `main` runs `.github/workflows/deploy.yml`, which builds and pushes
+`dist/` to the `gh-pages` branch that GitHub Pages serves. `base: './'` in the Vite
+config keeps asset URLs relative, so the bundle works from a project subpath
+without any rewriting — drop `dist/` on any static host and it runs.
 
 ## Licence
 
