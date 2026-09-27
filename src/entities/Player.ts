@@ -45,6 +45,16 @@ const DODGE_DURATION = 0.44;
 const DODGE_IFRAME_START = 0.04;
 const DODGE_IFRAME_END = 0.32;
 const STAMINA_REGEN = 23;
+/**
+ * How long an attack press is remembered while the hero is busy.
+ *
+ * Players press again while the sword is still moving — that is when it feels
+ * like the right moment — so a press has to survive the wind-up and active
+ * frames, not just the recovery. Dropping it reads as the game ignoring input.
+ */
+const INPUT_BUFFER = 0.45;
+/** Once stamina is spent, you must recover this fraction before sprinting again. */
+const SPRINT_RECOVERY = 0.25;
 const STAMINA_DELAY = 0.5;
 const SPRINT_DRAIN = 12;
 const ATTACK_COSTS = [10, 10, 16];
@@ -57,11 +67,16 @@ export class Player extends Actor {
 
   private ctx!: GameContext;
   private stateTime = 0;
-  private comboIndex = 0;
-  private comboQueued = false;
-  private comboWindow = 0;
+  comboIndex = 0;
+  comboQueued = false;
+  /** Seconds the buffered attack press stays valid. */
+  comboBuffer = 0;
   private swingHit = false;
   private staminaTimer = 0;
+  /** True on frames the hero is actually sprinting, which suppresses regen. */
+  private sprinting = false;
+  /** Set when sprint drains the bar dry; blocks sprinting until partly refilled. */
+  private exhausted = false;
   private specialCooldown = 0;
   private deathTimer = 0;
   private speed = 0;
@@ -154,7 +169,9 @@ export class Player extends Actor {
     if (this.hp <= 0 && this.state !== 'dead') this.die();
     this.stateTime += dt;
     this.specialCooldown = Math.max(0, this.specialCooldown - dt);
-    this.comboWindow = Math.max(0, this.comboWindow - dt);
+    this.comboBuffer = Math.max(0, this.comboBuffer - dt);
+    if (this.comboBuffer <= 0) this.comboQueued = false;
+    this.sprinting = false;
     this.updateCommon(dt, this.ctx.blockers);
 
     if (this.state === 'dead') {
@@ -215,10 +232,22 @@ export class Player extends Actor {
   private handleLocomotion(dt: number): void {
     const input = this.ctx.input;
     const wantsMove = Math.abs(input.moveX) > 0.02 || Math.abs(input.moveY) > 0.02;
-    const sprinting = wantsMove && input.down('sprint') && this.stamina > 1;
+    // After running the bar dry you have to let it refill a quarter of the way
+    // before you can sprint again, so sprinting cannot stutter on and off.
+    const floor = this.exhausted ? this.stats.maxStamina * SPRINT_RECOVERY : 1;
+    const sprinting = wantsMove && input.down('sprint') && this.stamina > floor;
     const targetSpeed = wantsMove ? (sprinting ? SPRINT_SPEED : WALK_SPEED) : 0;
 
-    if (sprinting) this.spendStamina(SPRINT_DRAIN * dt, false);
+    if (sprinting) {
+      this.exhausted = false;
+      // Suppress regeneration for the frame rather than resetting the delay
+      // timer: resetting it would stall the refill for half a second after every
+      // step, while leaving regeneration running made sprinting *restore*
+      // stamina, because regen (23/s) outpaced the drain (12/s).
+      this.sprinting = true;
+      this.spendStamina(SPRINT_DRAIN * dt, false);
+      if (this.stamina <= 1) this.exhausted = true;
+    }
 
     this.speed += (targetSpeed - this.speed) * damp(dt, 0.07);
     if (wantsMove) this.steer(dt, 11, 1);
@@ -269,18 +298,18 @@ export class Player extends Actor {
 
   private regenStamina(dt: number): void {
     this.staminaTimer = Math.max(0, this.staminaTimer - dt);
-    if (this.staminaTimer > 0) return;
+    if (this.staminaTimer > 0 || this.sprinting) return;
     const state = getState();
     if (state.stamina >= this.stats.maxStamina) return;
     actions.setVitals(state.hp, state.stamina + STAMINA_REGEN * this.stats.staminaRegen * dt);
   }
 
   private tryAttack(): void {
-    if (this.state === 'dead' || this.state === 'hurt' || this.state === 'locked') return;
-    if (this.state === 'dodge' || this.state === 'special') return;
-    if (this.state === 'attack') {
-      // Buffer the next swing; it fires when the current one is past its active frames.
-      if (this.comboWindow > 0) this.comboQueued = true;
+    if (this.state === 'dead' || this.state === 'locked' || this.state === 'special') return;
+    if (this.state === 'attack' || this.state === 'dodge' || this.state === 'hurt') {
+      // Remember it for the whole animation; it fires the moment the hero is free.
+      this.comboQueued = true;
+      this.comboBuffer = INPUT_BUFFER;
       return;
     }
     this.beginSwing(0);
@@ -297,7 +326,7 @@ export class Player extends Actor {
     this.stateTime = 0;
     this.swingHit = false;
     this.comboQueued = false;
-    this.comboWindow = 0;
+    this.comboBuffer = 0;
     this.faceNearestEnemy();
     const swing = COMBO[this.comboIndex];
     this.ctx.audio.play(swing.heavy ? 'swingHeavy' : 'swing', {
@@ -381,7 +410,10 @@ export class Player extends Actor {
         break;
       case 'hurt':
         this.poseHurt(dt);
-        if (this.stateTime > 0.32) this.state = 'idle';
+        if (this.stateTime > 0.32) {
+          this.state = 'idle';
+          if (this.comboQueued && this.comboBuffer > 0) this.beginSwing(0);
+        }
         break;
       default:
         break;
@@ -409,7 +441,6 @@ export class Player extends Actor {
       }
     } else if (t < recover) {
       this.poseSwingRecover((t - active) / (recover - active));
-      this.comboWindow = 0.28;
       if (this.comboQueued && this.comboIndex < COMBO.length - 1) {
         this.beginSwing(this.comboIndex + 1);
       }
@@ -527,6 +558,7 @@ export class Player extends Actor {
     if (t >= DODGE_DURATION) {
       this.state = 'idle';
       this.rollAngle = 0;
+      if (this.comboQueued && this.comboBuffer > 0) this.beginSwing(0);
     }
   }
 

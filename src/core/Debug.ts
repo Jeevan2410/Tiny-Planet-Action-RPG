@@ -19,6 +19,10 @@ export interface DebugSnapshot {
   position: [number, number, number];
   facing: [number, number, number];
   playerState: string;
+  comboIndex: number;
+  comboQueued: boolean;
+  comboBuffer: number;
+  specialCooldown: number;
   timeInState: number;
   speed: number;
   hp: number;
@@ -58,6 +62,10 @@ interface GameInternals {
     groundSpeed: number;
     timeInState: number;
     invulnerable: number;
+    comboIndex: number;
+    comboQueued: boolean;
+    comboBuffer: number;
+    specialCooldownRatio: number;
   } | null;
   enemies: Array<{
     kind: string;
@@ -101,6 +109,10 @@ export function installDebug(game: Game): void {
       position: [round(player.dir.x), round(player.dir.y), round(player.dir.z)],
       facing: [round(player.forward.x), round(player.forward.y), round(player.forward.z)],
       playerState: player.state,
+      comboIndex: player.comboIndex,
+      comboQueued: player.comboQueued,
+      comboBuffer: Number(player.comboBuffer.toFixed(3)),
+      specialCooldown: Number(player.specialCooldownRatio.toFixed(2)),
       timeInState: Number(player.timeInState.toFixed(3)),
       speed: Number(player.groundSpeed.toFixed(2)),
       hp: Math.round(state.hp),
