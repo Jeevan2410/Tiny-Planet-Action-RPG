@@ -30,6 +30,18 @@ const MAX_DISTANCE = 15;
  * "down" on screen is always towards the planet's core.
  */
 export class CameraRig {
+  /** Props shorter than this never push the camera; they cannot fill the frame. */
+  private static readonly MIN_BLOCK_HEIGHT = 2.4;
+  /** Obstructions inside the hero's own body space are ignored. */
+  private static readonly IGNORE_WITHIN = 1.6;
+  /**
+   * How close the camera will get to clear an obstruction. Pulling in cannot
+   * always solve occlusion — a tree two metres behind you is between you and the
+   * camera at any distance — so this is set tight enough that the hero always
+   * stays on screen, which matters more than a roomy frame.
+   */
+  private static readonly MIN_BLOCKED_DISTANCE = 2.4;
+
   /** Tangent direction the camera looks along. */
   heading = new Vector3(0, 0, -1);
   pitch = 0.2;
@@ -82,48 +94,51 @@ export class CameraRig {
   }
 
   /**
-   * Pull the camera in until nothing tall stands between it and the hero.
+   * Pull the camera in when something tall stands between it and the hero.
    *
-   * Walk from the focus outwards and stop at the first sample that is inside a
-   * blocker the camera is not clearing — a canopy filling the screen is far worse
-   * than a slightly tight camera.
+   * Sweeps outwards from the focus and stops short of the first obstruction —
+   * testing only the camera's own position would happily leave a tree filling the
+   * middle of the screen.
+   *
+   * It ignores anything shorter than the hero, since a boulder or a market stall
+   * cannot fill the frame from behind, and anything inside the hero's own body
+   * space.
    */
-  private clearDistance(focus: Vector3, offset: Vector3, wanted: number, blockers: readonly Blocker[]): number {
+  private clearDistance(
+    focus: Vector3,
+    offset: Vector3,
+    wanted: number,
+    blockers: readonly Blocker[],
+  ): number {
     if (blockers.length === 0) return wanted;
     const playerDir = _v6.copy(focus).normalize();
 
-    // Prefilter once: only blockers the arc could possibly reach.
+    // Prefilter once: only tall blockers the ray could possibly reach.
     _nearby.length = 0;
     for (let i = 0; i < blockers.length; i++) {
       const blocker = blockers[i];
+      if (blocker.height < CameraRig.MIN_BLOCK_HEIGHT) continue;
       if (arcAngle(playerDir, blocker.dir) * PLANET_RADIUS > wanted + blocker.radius + 1) continue;
       _nearby.push(blocker);
     }
     if (_nearby.length === 0) return wanted;
 
-    const steps = 7;
-    let allowed = wanted;
-    for (let step = steps; step >= 2; step--) {
+    const steps = 8;
+    for (let step = 1; step <= steps; step++) {
       const distance = (wanted * step) / steps;
+      if (distance < CameraRig.IGNORE_WITHIN) continue;
       const sample = _v7.copy(focus).addScaledVector(offset, distance);
       const dir = _v8.copy(sample).normalize();
       const groundHeight = sample.length() - (PLANET_RADIUS + surfaceHeight(dir));
-      let blocked = false;
       for (let i = 0; i < _nearby.length; i++) {
         const blocker = _nearby[i];
-        if (groundHeight > blocker.height + 0.25) continue;
-        if (arcAngle(dir, blocker.dir) * PLANET_RADIUS < blocker.radius + 0.5) {
-          blocked = true;
-          break;
+        if (groundHeight > blocker.height + 0.2) continue;
+        if (arcAngle(dir, blocker.dir) * PLANET_RADIUS < blocker.radius + 0.4) {
+          return Math.max(CameraRig.MIN_BLOCKED_DISTANCE, (wanted * (step - 1)) / steps);
         }
       }
-      if (!blocked) {
-        allowed = distance;
-        break;
-      }
-      allowed = (wanted * (step - 1)) / steps;
     }
-    return Math.max(wanted * 0.3, allowed);
+    return wanted;
   }
 
   update(dt: number, playerDir: Vector3, eyeHeight: number, blockers: readonly Blocker[] = []): void {

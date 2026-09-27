@@ -50,6 +50,8 @@ export class Input {
   moveY = 0;
   /** True while movement comes from the on-screen stick rather than keys. */
   usingTouch = false;
+  /** Accumulated wheel steps, drained by `takeZoom`. */
+  zoomDelta = 0;
 
   private held = new Set<string>();
   private edge = new Set<Action>();
@@ -160,8 +162,6 @@ export class Input {
       () => this.target.removeEventListener('wheel', onWheel),
     );
   }
-
-  zoomDelta = 0;
 
   private isActionHeldByKey(action: Action): boolean {
     for (const code of this.held) if (KEY_ACTIONS[code] === action) return true;

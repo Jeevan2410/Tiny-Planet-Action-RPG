@@ -639,12 +639,14 @@ export class Enemy extends Actor {
       const t = clamp(this.stateTime / this.config.telegraph, 0, 1);
       const pulse = 0.35 + 0.65 * Math.abs(Math.sin(t * t * 22));
       material.emissive.setHex(this.config.telegraphColour);
-      material.emissiveIntensity = pulse * 0.85;
+      // Bright enough to read across a biome, dim enough that the silhouette and
+      // the wind-up pose survive — a flat glowing blob is a worse tell, not a better one.
+      material.emissiveIntensity = pulse * 0.55;
       return;
     }
     if (this.state === 'strike') {
       material.emissive.setHex(this.config.telegraphColour);
-      material.emissiveIntensity = 0.5;
+      material.emissiveIntensity = 0.34;
       return;
     }
     material.emissive.copy(this.baseColour);

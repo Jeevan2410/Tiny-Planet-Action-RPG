@@ -108,7 +108,7 @@ export class World {
       const npc = new Npc(def, dir, forward);
       this.npcs.push(npc);
       this.root.add(npc.group);
-      this.blockers.push({ dir: npc.dir.clone(), radius: 0.5, height: 1.8 });
+      this.blockers.push({ dir: npc.dir.clone(), radius: 0.5, height: 2.4 });
     }
 
     this.buildSpawnPoints();
@@ -173,7 +173,27 @@ export class World {
     scene.add(this.sky.group);
   }
 
-  /** Spawn everything that should exist right now. Call once after construction. */
+  /**
+   * Tear the live world down so a new run can repopulate it.
+   *
+   * The `World` outlives a run — it is built once and reused when the player quits
+   * to the title and starts again — so every enemy, pickup and warden flag has to
+   * be cleared or the next run inherits the last one's corpses.
+   */
+  despawnAll(ctx: GameContext): void {
+    for (const enemy of ctx.enemies) this.enemyLayer.remove(enemy.group);
+    ctx.enemies.length = 0;
+    for (const spawn of this.spawns) {
+      spawn.enemy = null;
+      spawn.respawnIn = 0;
+      spawn.lootDropped = false;
+    }
+    for (const pickup of this.pickups) this.pickupLayer.remove(pickup.group);
+    this.pickups.length = 0;
+    this.wardenDefeated.clear();
+  }
+
+  /** Spawn everything that should exist right now. Call once per run. */
   populate(ctx: GameContext): void {
     for (const spawn of this.spawns) {
       if (spawn.permanent && this.isWardenDefeated(spawn.biome)) continue;

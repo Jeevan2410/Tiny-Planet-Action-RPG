@@ -57,6 +57,7 @@ interface GameInternals {
     state: string;
     groundSpeed: number;
     timeInState: number;
+    invulnerable: number;
   } | null;
   enemies: Array<{
     kind: string;
@@ -194,9 +195,14 @@ export function installDebug(game: Game): void {
         player.forward.copy(target).addScaledVector(player.dir, -target.dot(player.dir)).normalize();
         return true;
       },
+      /** Damage the hero through the real path, so death and respawn actually run. */
       hurt(amount: number): void {
-        const state = getState();
-        actions.setVitals(state.hp - amount, state.stamina);
+        const player = internals.player as unknown as
+          | { takeDamage(n: number): number; invulnerable: number }
+          | null;
+        if (!player) return;
+        player.invulnerable = 0;
+        player.takeDamage(amount);
       },
       /** Properly slay everything nearby, so XP, loot and quest hooks all fire. */
       killAll(kind?: string): number {

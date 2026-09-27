@@ -5,7 +5,11 @@
 export class Loop {
   /** Seconds of simulated gameplay time since the loop started. */
   elapsed = 0;
-  /** Multiplies gameplay delta. Combat drops this briefly for impact. */
+  /**
+   * Global multiplier on gameplay delta — a hook for slow motion. Combat's
+   * hit-stop is applied in `Game` instead, so that it can freeze the simulation
+   * while camera shake and VFX keep running on the raw delta.
+   */
   timeScale = 1;
 
   private last = 0;

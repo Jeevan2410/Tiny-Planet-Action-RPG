@@ -148,6 +148,10 @@ export class Player extends Actor {
     this.stats = derivedStats();
     this.maxHp = this.stats.maxHp;
     this.hp = getState().hp;
+    // Health can reach zero through paths other than takeDamage (a loaded save, a
+    // future damage-over-time effect). Catch it here so the hero can never walk
+    // around on no health.
+    if (this.hp <= 0 && this.state !== 'dead') this.die();
     this.stateTime += dt;
     this.specialCooldown = Math.max(0, this.specialCooldown - dt);
     this.comboWindow = Math.max(0, this.comboWindow - dt);
@@ -564,6 +568,7 @@ export class Player extends Actor {
   }
 
   private die(): void {
+    if (this.state === 'dead') return;
     this.state = 'dead';
     this.dead = true;
     this.stateTime = 0;

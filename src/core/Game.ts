@@ -195,6 +195,14 @@ export class Game {
     const player = this.player!;
     const state = getState();
 
+    // Clear anything the previous run left behind.
+    world.despawnAll(this.ctx);
+    for (const projectile of this.projectiles) this.renderer.scene.remove(projectile.mesh);
+    this.projectiles.length = 0;
+    this.vfx.clear();
+    this.ui.floating.clear();
+    this.hitStopTimer = 0;
+
     // Restore shrine/warden state before anything spawns.
     for (const biome of SHRINE_BIOMES) {
       const cured = !!state.shrines[biome];
@@ -222,7 +230,6 @@ export class Game {
     const stats = derivedStats();
     actions.setVitals(continueSave ? state.hp : stats.maxHp, continueSave ? state.stamina : stats.maxStamina);
 
-    this.enemies.length = 0;
     world.populate(this.ctx);
 
     this.camera.reset(player.dir, player.forward);
@@ -709,6 +716,7 @@ export class Game {
   /* ---------------------------------------------------------------- loop */
 
   private frame = (now: number): void => {
+    if (!this.running) return;
     requestAnimationFrame(this.frame);
     const timing = this.loop.begin(now);
     const rawDt = timing.rawDt;
