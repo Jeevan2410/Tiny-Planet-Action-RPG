@@ -1,4 +1,4 @@
-import { Group, Mesh, Vector3 } from 'three';
+import { Group, Mesh, Vector3, type BufferGeometry } from 'three';
 import { GeoBuilder } from '../render/GeoBuilder';
 import { outlineTree, toon } from '../render/ToonMaterials';
 import { PRIMITIVES } from '../world/Props';
@@ -15,6 +15,45 @@ import { ITEMS, type ItemId } from '../rpg/Items';
 import { actions } from '../state/gameState';
 
 const { ico, cyl, cone } = PRIMITIVES;
+
+/**
+ * Shared geometry for the things that spawn and die constantly.
+ *
+ * A spitter fires a bolt every couple of seconds and every kill can drop loot;
+ * building fresh buffers for each and never disposing them leaked GPU memory for
+ * the whole session. The shapes never vary, so they are built once.
+ */
+let boltGeometry: BufferGeometry | null = null;
+const pickupGeometry = new Map<string, BufferGeometry>();
+
+function getBoltGeometry(): BufferGeometry {
+  if (!boltGeometry) {
+    boltGeometry = new GeoBuilder()
+      .place(ico(0), 0x9d5cff, [0, 0, 0], [0.22, 0.22, 0.22], [0, 0, 0], { emissiveBoost: 1 })
+      .place(cone(0.12, 0.34, 5), 0x6b3a7a, [0, -0.18, 0], [1, 1, 1], [Math.PI, 0, 0])
+      .build('bolt');
+  }
+  return boltGeometry;
+}
+
+function getPickupGeometry(drop: DropKind): BufferGeometry {
+  const key = drop.kind === 'glimmer' ? 'glimmer' : ITEMS[drop.id].kind;
+  let geometry = pickupGeometry.get(key);
+  if (!geometry) {
+    const builder = new GeoBuilder();
+    if (drop.kind === 'glimmer') {
+      builder.place(ico(0), 0xffe06b, [0, 0, 0], [0.19, 0.26, 0.19], [0, 0, 0], { emissiveBoost: 1 });
+    } else {
+      const item = ITEMS[drop.id];
+      const colour = item.kind === 'quest' ? 0x9d5cff : item.kind === 'consumable' ? 0x7fe0a8 : 0x9fd8f0;
+      builder.place(cyl(0.14, 0.18, 0.34, 6), colour, [0, 0, 0], [1, 1, 1], [0, 0, 0], { emissiveBoost: 0.55 });
+      builder.place(ico(0), 0xffffff, [0, 0.24, 0], [0.11, 0.09, 0.11], [0, 0, 0], { emissiveBoost: 0.7 });
+    }
+    geometry = builder.build(`pickup:${key}`);
+    pickupGeometry.set(key, geometry);
+  }
+  return geometry;
+}
 
 /**
  * A blight bolt: travels along a great circle at a fixed height above the ground.
@@ -38,11 +77,7 @@ export class Projectile {
     this.dir = dir.clone().normalize();
     this.heading = tangentise(heading.clone(), this.dir);
     this.life = 3.2;
-    const geometry = new GeoBuilder()
-      .place(ico(0), 0x9d5cff, [0, 0, 0], [0.22, 0.22, 0.22], [0, 0, 0], { emissiveBoost: 1 })
-      .place(cone(0.12, 0.34, 5), 0x6b3a7a, [0, -0.18, 0], [1, 1, 1], [Math.PI, 0, 0])
-      .build('bolt');
-    this.mesh = new Mesh(geometry, toon({ vertexColors: true, steps: 3, flatShading: true }));
+    this.mesh = new Mesh(getBoltGeometry(), toon({ vertexColors: true, steps: 3, flatShading: true }));
     this.mesh.castShadow = false;
     this.sync();
   }
@@ -103,16 +138,7 @@ export class Pickup {
     readonly drop: DropKind,
   ) {
     this.dir = dir.clone().normalize();
-    const builder = new GeoBuilder();
-    if (drop.kind === 'glimmer') {
-      builder.place(ico(0), 0xffe06b, [0, 0, 0], [0.19, 0.26, 0.19], [0, 0, 0], { emissiveBoost: 1 });
-    } else {
-      const item = ITEMS[drop.id];
-      const colour = item.kind === 'quest' ? 0x9d5cff : item.kind === 'consumable' ? 0x7fe0a8 : 0x9fd8f0;
-      builder.place(cyl(0.14, 0.18, 0.34, 6), colour, [0, 0, 0], [1, 1, 1], [0, 0, 0], { emissiveBoost: 0.55 });
-      builder.place(ico(0), 0xffffff, [0, 0.24, 0], [0.11, 0.09, 0.11], [0, 0, 0], { emissiveBoost: 0.7 });
-    }
-    const mesh = new Mesh(builder.build('pickup'), toon({ vertexColors: true, steps: 3, flatShading: true }));
+    const mesh = new Mesh(getPickupGeometry(drop), toon({ vertexColors: true, steps: 3, flatShading: true }));
     mesh.castShadow = false;
     this.group.add(mesh);
     outlineTree(this.group, 0.018);

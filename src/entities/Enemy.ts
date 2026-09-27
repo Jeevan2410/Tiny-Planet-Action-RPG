@@ -700,7 +700,9 @@ export class Enemy extends Actor {
   private poseWalk(dt: number, speed: number): void {
     const pose = this.model.rig.target;
     pose.reset();
-    const rate = 2 + speed * 1.7;
+    // `update` already advanced phase by dt; add only the extra stride rate, or
+    // walking animates faster than the enemy actually moves.
+    const rate = 1 + speed * 1.7;
     this.phase += dt * rate;
     const swing = Math.sin(this.phase);
     switch (this.kind) {

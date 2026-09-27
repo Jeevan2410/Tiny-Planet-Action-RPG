@@ -19,6 +19,7 @@ export interface DebugSnapshot {
   position: [number, number, number];
   facing: [number, number, number];
   playerState: string;
+  headHeight: number;
   comboIndex: number;
   comboQueued: boolean;
   comboBuffer: number;
@@ -49,6 +50,8 @@ export interface DebugSnapshot {
   frames: number;
   drawCalls: number;
   triangles: number;
+  geometries: number;
+  textures: number;
 }
 
 interface GameInternals {
@@ -62,6 +65,7 @@ interface GameInternals {
     groundSpeed: number;
     timeInState: number;
     invulnerable: number;
+    headHeight: number;
     comboIndex: number;
     comboQueued: boolean;
     comboBuffer: number;
@@ -80,7 +84,14 @@ interface GameInternals {
   world: { villageDir: Vector3; npcs: Array<{ def: { id: string }; dir: Vector3; forward: Vector3 }> } | null;
   fps: number;
   frames: number;
-  renderer: { renderer: { info: { render: { calls: number; triangles: number } } } };
+  renderer: {
+    renderer: {
+      info: {
+        render: { calls: number; triangles: number };
+        memory: { geometries: number; textures: number };
+      };
+    };
+  };
 }
 
 export function installDebug(game: Game): void {
@@ -109,6 +120,7 @@ export function installDebug(game: Game): void {
       position: [round(player.dir.x), round(player.dir.y), round(player.dir.z)],
       facing: [round(player.forward.x), round(player.forward.y), round(player.forward.z)],
       playerState: player.state,
+      headHeight: Number(player.headHeight.toFixed(2)),
       comboIndex: player.comboIndex,
       comboQueued: player.comboQueued,
       comboBuffer: Number(player.comboBuffer.toFixed(3)),
@@ -141,6 +153,9 @@ export function installDebug(game: Game): void {
       frames: internals.frames,
       drawCalls: internals.renderer.renderer.info.render.calls,
       triangles: internals.renderer.renderer.info.render.triangles,
+      // Watching these climb across respawns is how a geometry leak shows itself.
+      geometries: internals.renderer.renderer.info.memory.geometries,
+      textures: internals.renderer.renderer.info.memory.textures,
     };
   };
 

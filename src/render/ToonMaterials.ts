@@ -149,11 +149,20 @@ const OUTLINE_FRAG = /* glsl */ `
   }
 `;
 
+const outlineCache = new Map<string, ShaderMaterial>();
+
 /**
  * Inverted-hull outline: draw the same geometry inflated along its normals with
  * front faces culled, so only the silhouette sliver survives.
+ *
+ * Cached like the other factories — every enemy spawn outlines a dozen meshes, and
+ * uncached this allocated a fresh ShaderMaterial (and a fresh program-cache
+ * reference) for each one, every time.
  */
 export function outlineMaterial(thickness = 0.03, color = 0x140f1f): ShaderMaterial {
+  const key = `${thickness}|${new Color(color).getHex()}`;
+  const cached = outlineCache.get(key);
+  if (cached) return cached;
   const material = new ShaderMaterial({
     uniforms: {
       uThickness: { value: thickness },
@@ -164,6 +173,7 @@ export function outlineMaterial(thickness = 0.03, color = 0x140f1f): ShaderMater
     side: BackSide,
   });
   material.toneMapped = false;
+  outlineCache.set(key, material);
   return material;
 }
 
@@ -183,9 +193,11 @@ export function addOutline(mesh: Mesh, thickness = 0.03, color = 0x140f1f): Mesh
 export function outlineTree(root: import('three').Object3D, thickness = 0.03, color = 0x140f1f): void {
   const meshes: Mesh[] = [];
   root.traverse((child) => {
-    if ((child as Mesh).isMesh && child.name !== 'outline' && !child.userData.noOutline) {
-      meshes.push(child as Mesh);
-    }
+    if (!(child as Mesh).isMesh || child.name === 'outline' || child.userData.noOutline) return;
+    // Skip anything already outlined: buildWarden outlines a model buildBrute has
+    // already been through, which used to give every limb two coincident shells.
+    if (child.children.some((grandchild) => grandchild.name === 'outline')) return;
+    meshes.push(child as Mesh);
   });
   for (const mesh of meshes) addOutline(mesh, thickness, color);
 }

@@ -1,4 +1,4 @@
-import { Color, Group, Mesh, Object3D, type MeshToonMaterial } from 'three';
+import { Color, Group, Mesh, Object3D, type BufferGeometry, type MeshToonMaterial } from 'three';
 import { GeoBuilder } from '../render/GeoBuilder';
 import { outlineTree, toonUnique } from '../render/ToonMaterials';
 import { PRIMITIVES } from '../world/Props';
@@ -20,15 +20,58 @@ function characterMaterial(): MeshToonMaterial {
   return toonUnique({ vertexColors: true, steps: 3, flatShading: true });
 }
 
-/** Build one merged mesh for a bone's parts. */
-function part(material: MeshToonMaterial, build: (b: GeoBuilder) => void, name: string): Mesh {
-  const builder = new GeoBuilder();
-  build(builder);
-  const mesh = new Mesh(builder.build(name), material);
+/**
+ * Geometry cache, keyed by model kind (and palette) plus part name.
+ *
+ * Enemies respawn every minute or so, and every spawn used to build a fresh set
+ * of merged buffers that nothing ever disposed — a steady GPU memory leak over a
+ * session. The shapes are deterministic for a given kind and palette, so they are
+ * built once and shared; each character still gets its own material, which is all
+ * the hit flash needs.
+ */
+const geometryCache = new Map<string, BufferGeometry>();
+
+/**
+ * Build (or reuse) one merged mesh for a bone's parts.
+ *
+ * `prefix` identifies the model (and palette); `shape` defaults to the mesh name
+ * but can be shared by parts whose geometry is identical — left and right limbs
+ * are mirrored by the bone transform, not by the buffers, so they cache as one.
+ */
+function part(
+  material: MeshToonMaterial,
+  build: (b: GeoBuilder) => void,
+  name: string,
+  prefix?: string,
+  shape?: string,
+): Mesh {
+  const cacheKey = prefix ? `${prefix}:${shape ?? name}` : undefined;
+  let geometry = cacheKey ? geometryCache.get(cacheKey) : undefined;
+  if (!geometry) {
+    const builder = new GeoBuilder();
+    build(builder);
+    geometry = builder.build(name);
+    if (cacheKey) geometryCache.set(cacheKey, geometry);
+  }
+  const mesh = new Mesh(geometry, material);
   mesh.name = name;
   mesh.castShadow = true;
   mesh.receiveShadow = false;
   return mesh;
+}
+
+/** A stable cache key for a hero/villager palette. */
+function paletteKey(palette: HeroPalette): string {
+  return [
+    palette.skin,
+    palette.hair,
+    palette.tunic,
+    palette.tunicTrim,
+    palette.trousers,
+    palette.boots,
+    palette.cape,
+    palette.belt,
+  ].join('-');
 }
 
 function bone(parent: Object3D, x: number, y: number, z: number, name: string): Group {
@@ -50,6 +93,15 @@ export interface HeroPalette {
   belt: number;
 }
 
+/**
+ * Height of the hero's `body` pivot above the feet.
+ *
+ * The roll rotates the whole body about this node. With the node at the feet the
+ * animation swung the head a full body-length through the ground, so it sits at
+ * roughly the hero's middle instead and the roll turns about their centre.
+ */
+export const HERO_PIVOT = 0.82;
+
 export const HERO_PALETTE: HeroPalette = {
   skin: 0xf1c49c,
   hair: 0x6a3f24,
@@ -67,11 +119,13 @@ export const HERO_PALETTE: HeroPalette = {
  */
 export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
   const material = characterMaterial();
+  const key = `hero:${paletteKey(palette)}`;
   const root = new Group();
   root.name = 'hero';
 
-  const body = bone(root, 0, 0, 0, 'body');
-  const hips = bone(body, 0, 0.66, 0, 'hips');
+  const body = bone(root, 0, HERO_PIVOT, 0, 'body');
+  // Hips keep their absolute height; the pivot only moves where rotation happens.
+  const hips = bone(body, 0, 0.66 - HERO_PIVOT, 0, 'hips');
 
   // Torso: tunic that flares towards the hem, plus a belt and a shoulder yoke.
   const torso = bone(hips, 0, 0, 0, 'torso');
@@ -87,6 +141,7 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(cube(), palette.cape, [0, -0.02, 0.24], [0.44, 0.34, 0.08], [0.22, 0, 0]);
       },
       'torsoMesh',
+      key,
     ),
   );
 
@@ -107,6 +162,7 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(ball(6, 4), 0xffffff, [0.075, 0.025, -0.225], [0.018, 0.022, 0.014]);
       },
       'headMesh',
+      key,
     ),
   );
 
@@ -119,6 +175,8 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(cyl(0.085, 0.1, 0.32, 6), palette.tunic, [0, -0.17, 0]);
       },
       'armLMesh',
+      key,
+      'arm',
     ),
   );
   const elbowL = bone(armL, 0, -0.33, 0, 'elbowL');
@@ -130,6 +188,8 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(ball(7, 5), palette.skin, [0, -0.33, 0], [0.105, 0.105, 0.105]);
       },
       'elbowLMesh',
+      key,
+      'elbow',
     ),
   );
 
@@ -142,6 +202,8 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(cyl(0.085, 0.1, 0.32, 6), palette.tunic, [0, -0.17, 0]);
       },
       'armRMesh',
+      key,
+      'arm',
     ),
   );
   const elbowR = bone(armR, 0, -0.33, 0, 'elbowR');
@@ -153,6 +215,8 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(ball(7, 5), palette.skin, [0, -0.33, 0], [0.105, 0.105, 0.105]);
       },
       'elbowRMesh',
+      key,
+      'elbow',
     ),
   );
   // The grip: weapons are modelled with the blade running up +Y from the origin.
@@ -167,6 +231,8 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(cyl(0.11, 0.115, 0.34, 6), palette.trousers, [0, -0.17, 0]);
       },
       'hipLMesh',
+      key,
+      'hip',
     ),
   );
   const kneeL = bone(hipL, 0, -0.34, 0, 'kneeL');
@@ -178,6 +244,8 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(cube(), palette.boots, [0, -0.3, -0.05], [0.23, 0.14, 0.34]);
       },
       'kneeLMesh',
+      key,
+      'knee',
     ),
   );
 
@@ -189,6 +257,8 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(cyl(0.11, 0.115, 0.34, 6), palette.trousers, [0, -0.17, 0]);
       },
       'hipRMesh',
+      key,
+      'hip',
     ),
   );
   const kneeR = bone(hipR, 0, -0.34, 0, 'kneeR');
@@ -200,6 +270,8 @@ export function buildHero(palette: HeroPalette = HERO_PALETTE): CharacterModel {
         b.place(cube(), palette.boots, [0, -0.3, -0.05], [0.23, 0.14, 0.34]);
       },
       'kneeRMesh',
+      key,
+      'knee',
     ),
   );
 
@@ -237,6 +309,7 @@ export function buildMote(): CharacterModel {
         b.place(ico(0), 0x7a4690, [0, 0.1, 0], [0.26, 0.24, 0.26]);
       },
       'coreMesh',
+      'mote',
     ),
   );
   const spikes = bone(body, 0, 0, 0, 'spikes');
@@ -256,6 +329,7 @@ export function buildMote(): CharacterModel {
         }
       },
       'spikeMesh',
+      'mote',
     ),
   );
   const eye = bone(body, 0, 0.02, -0.26, 'eye');
@@ -267,6 +341,7 @@ export function buildMote(): CharacterModel {
         b.place(ball(7, 5), 0x201626, [0, 0, -0.05], [0.055, 0.075, 0.04]);
       },
       'eyeMesh',
+      'mote',
     ),
   );
   const rig = new Rig(body, { body, core, spikes, eye });
@@ -297,6 +372,7 @@ export function buildBrute(scale = 1): CharacterModel {
         b.place(cone(0.06, 0.16, 4), 0x9d5cff, [0.56, 0.95, -0.08], [1, 1, 1], [0.2, 0, -0.6], { emissiveBoost: 0.9 });
       },
       'torsoMesh',
+      'brute',
     ),
   );
 
@@ -313,6 +389,7 @@ export function buildBrute(scale = 1): CharacterModel {
         b.place(cone(0.035, 0.14, 4), 0xe8ddd0, [0.1, -0.16, -0.15], [1, 1, 1], [Math.PI, 0, -0.15]);
       },
       'headMesh',
+      'brute',
     ),
   );
 
@@ -327,6 +404,8 @@ export function buildBrute(scale = 1): CharacterModel {
           b.place(cyl(0.16, 0.19, 0.46, 6), 0x4e3c5a, [0, -0.23, 0]);
         },
         `${armName}Mesh`,
+        'brute',
+        'arm',
       ),
     );
     const elbow = bone(arm, 0, -0.48, 0, side < 0 ? 'elbowL' : 'elbowR');
@@ -339,6 +418,8 @@ export function buildBrute(scale = 1): CharacterModel {
           b.place(cone(0.07, 0.22, 4), 0x2f1b3a, [0, -0.62, -0.22], [1, 1, 1], [-1.4, 0, 0]);
         },
         `${side < 0 ? 'elbowL' : 'elbowR'}Mesh`,
+        'brute',
+        'elbow',
       ),
     );
   }
@@ -353,6 +434,8 @@ export function buildBrute(scale = 1): CharacterModel {
           b.place(cyl(0.17, 0.18, 0.36, 6), 0x3c2e46, [0, -0.18, 0]);
         },
         `${hipName}Mesh`,
+        'brute',
+        'hip',
       ),
     );
     const knee = bone(hip, 0, -0.36, 0, side < 0 ? 'kneeL' : 'kneeR');
@@ -364,6 +447,8 @@ export function buildBrute(scale = 1): CharacterModel {
           b.place(cube(), 0x2f2438, [0, -0.32, -0.06], [0.34, 0.16, 0.44]);
         },
         `${side < 0 ? 'kneeL' : 'kneeR'}Mesh`,
+        'brute',
+        'knee',
       ),
     );
   }
@@ -410,6 +495,7 @@ export function buildSpitter(): CharacterModel {
         }
       },
       'baseMesh',
+      'spitter',
     ),
   );
 
@@ -423,6 +509,7 @@ export function buildSpitter(): CharacterModel {
         b.place(cone(0.16, 0.34, 4), 0x3d5a42, [0.22, 0.32, -0.04], [1, 0.3, 1], [0, 0, -1.1]);
       },
       'stalkMesh',
+      'spitter',
     ),
   );
 
@@ -437,6 +524,7 @@ export function buildSpitter(): CharacterModel {
         b.place(cone(0.05, 0.16, 4), 0xe8ddd0, [0.12, -0.02, -0.18], [1, 1, 1], [-1.9, 0, 0]);
       },
       'jawTopMesh',
+      'spitter',
     ),
   );
   const jawBottom = bone(headPivot, 0, -0.02, 0, 'jawBottom');
@@ -448,6 +536,7 @@ export function buildSpitter(): CharacterModel {
         b.place(ball(8, 5), 0x9d5cff, [0, 0.0, -0.06], [0.17, 0.1, 0.17], [0, 0, 0], { emissiveBoost: 0.85 });
       },
       'jawBottomMesh',
+      'spitter',
     ),
   );
 
@@ -473,6 +562,7 @@ export function buildWarden(): CharacterModel {
           b.place(cyl(0.5, 0.56, 0.12, 8), 0x2f2438, [0, 0.02, 0]);
         },
         'shardMesh',
+        'warden',
       ),
     );
   }
@@ -493,6 +583,7 @@ export function buildWarden(): CharacterModel {
           }
         },
         'crownMesh',
+        'warden',
       ),
     );
   }
@@ -569,7 +660,9 @@ export function buildNpc(look: NpcLook): CharacterModel {
         b.place(ico(0), 0x9de8d0, [0, 1.35, 0], [0.13, 0.16, 0.13], [0, 0, 0], { emissiveBoost: 0.8 });
       },
       'staff',
+      'npc',
     );
+    outlineTree(staff, 0.016);
     model.socket.add(staff);
   }
   if (look === 'trainer' && model.socket) {
@@ -623,6 +716,8 @@ export function buildWeapon(look: WeaponLook, material: MeshToonMaterial): Group
       }
     },
     `weaponMesh:${look}`,
+    'weapon',
+    look,
   );
   group.add(mesh);
   outlineTree(group, 0.016);

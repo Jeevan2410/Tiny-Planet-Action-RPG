@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { Actor } from './Actor';
-import { buildHero, buildWeapon, type CharacterModel, type WeaponLook } from './Models';
+import { buildHero, buildWeapon, HERO_PIVOT, type CharacterModel, type WeaponLook } from './Models';
 import type { GameContext } from '../core/Context';
 import {
   arcAngle,
@@ -53,6 +53,8 @@ const STAMINA_REGEN = 23;
  * frames, not just the recovery. Dropping it reads as the game ignoring input.
  */
 const INPUT_BUFFER = 0.45;
+/** Distance from the head bone to the top of the skull, for ground checks. */
+const HEAD_CROWN = 0.3;
 /** Once stamina is spent, you must recover this fraction before sprinting again. */
 const SPRINT_RECOVERY = 0.25;
 const STAMINA_DELAY = 0.5;
@@ -116,6 +118,23 @@ export class Player extends Actor {
     );
   }
 
+  /**
+   * Height of the hero's head above the terrain, in world units.
+   *
+   * Exposed for the debug snapshot: it is the quickest way to catch an animation
+   * that swings the model through the ground.
+   */
+  get headHeight(): number {
+    const head = this.model.rig.bone('head');
+    if (!head) return 0;
+    // The head *bone* sits about 0.3 below the crown, so measuring the bone would
+    // read comfortably positive while the top of the skull was already buried.
+    head.updateWorldMatrix(true, false);
+    head.localToWorld(_head.set(0, HEAD_CROWN, 0));
+    const dir = _headDir.copy(_head).normalize();
+    return _head.length() - (PLANET_RADIUS + surfaceHeight(dir));
+  }
+
   /** Current ground speed in world units per second. */
   get groundSpeed(): number {
     return this.speed;
@@ -147,6 +166,34 @@ export class Player extends Actor {
     if (!socket) return;
     for (const child of [...socket.children]) socket.remove(child);
     if (look !== 'none') socket.add(buildWeapon(look, this.model.material));
+  }
+
+  /**
+   * Drop every scrap of combat state.
+   *
+   * Called on respawn and when a run starts, because the `Player` outlives a run:
+   * quitting to the title mid-death and continuing used to resume with the hero
+   * still in the `dead` state, which ignored the restored position and then
+   * force-respawned them at the village a second later.
+   */
+  resetCombat(): void {
+    this.state = 'idle';
+    this.stateTime = 0;
+    this.deathTimer = 0;
+    this.dead = false;
+    this.speed = 0;
+    this.knockSpeed = 0;
+    this.stagger = 0;
+    this.rollAngle = 0;
+    this.comboIndex = 0;
+    this.comboQueued = false;
+    this.comboBuffer = 0;
+    this.specialCooldown = 0;
+    this.staminaTimer = 0;
+    this.sprinting = false;
+    this.exhausted = false;
+    this.swingHit = false;
+    this.model.rig.root.rotation.set(0, 0, 0);
   }
 
   /** Lock input, e.g. while a dialogue is open. */
@@ -558,6 +605,14 @@ export class Player extends Actor {
     if (t >= DODGE_DURATION) {
       this.state = 'idle';
       this.rollAngle = 0;
+      // The live bone is sitting near -2*PI. Easing that back to a target of 0
+      // would play a whole reverse somersault, so fold it into the principal
+      // range — the pose is identical, the number is not. The target has to be
+      // cleared in the same breath: poseRoll wrote -2*PI into it a few lines ago,
+      // and rig.apply runs after this, so leaving it would ease straight back.
+      const body = this.model.rig.root;
+      body.rotation.x = normaliseAngle(body.rotation.x);
+      this.model.rig.target.set('body', 0, 0, 0);
       if (this.comboQueued && this.comboBuffer > 0) this.beginSwing(0);
     }
   }
@@ -620,7 +675,7 @@ export class Player extends Actor {
     this.stateTime = 0;
     this.knockSpeed = 0;
     this.invulnerable = 1.6;
-    this.rollAngle = 0;
+    this.resetCombat();
     actions.setVitals(Math.max(1, Math.round(stats.maxHp * 0.6)), stats.maxStamina);
     this.hp = getState().hp;
     this.model.rig.target.reset();
@@ -764,7 +819,10 @@ export class Player extends Actor {
     const pose = this.model.rig.target;
     pose.reset();
     pose.set('body', this.rollAngle, 0, 0);
-    const tuck = Math.sin(Math.min(1, phase * 1.25) * Math.PI);
+    // Tuck spans the full roll: ending it early left the hero extended and
+    // floating for the last few frames, while the body was still 70 degrees
+    // short of upright.
+    const tuck = Math.sin(phase * Math.PI);
     pose.set('torso', 0.7 * tuck, 0, 0);
     pose.set('head', 0.5 * tuck, 0, 0);
     pose.set('hipL', -1.5 * tuck, 0, 0);
@@ -773,7 +831,9 @@ export class Player extends Actor {
     pose.set('kneeR', -1.5 * tuck, 0, 0);
     pose.set('armL', -1.1 * tuck, 0, 0.5);
     pose.set('armR', -1.1 * tuck, 0, -0.5);
-    pose.offset[1] = 0.42 * tuck;
+    // Lift clear of the ground at the inverted point: with the pivot alone the
+    // crown grazed the terrain at the halfway mark.
+    pose.offset[1] = 0.32 * tuck;
   }
 
   private poseHurt(_dt: number): void {
@@ -799,7 +859,9 @@ export class Player extends Actor {
     pose.set('armR', -0.5, 0, -1.1);
     pose.set('hipL', 0.4, 0, 0);
     pose.set('hipR', 0.2, 0, 0);
-    pose.offset[1] = -0.28 * fall;
+    // Sink as they topple so the body ends up lying on the ground rather than
+    // pivoting around a point in mid-air.
+    pose.offset[1] = -HERO_PIVOT * 0.72 * fall;
     this.model.rig.apply(dt, 0.14);
   }
 }
@@ -810,3 +872,11 @@ const _v3 = /* @__PURE__ */ new Vector3();
 const _v4 = /* @__PURE__ */ new Vector3();
 const _v5 = /* @__PURE__ */ new Vector3();
 const _desired = /* @__PURE__ */ new Vector3();
+/** Fold an angle into (-PI, PI] without changing the pose it represents. */
+function normaliseAngle(angle: number): number {
+  const wrapped = ((angle + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  return wrapped - Math.PI;
+}
+
+const _head = /* @__PURE__ */ new Vector3();
+const _headDir = /* @__PURE__ */ new Vector3();

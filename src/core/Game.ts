@@ -211,24 +211,35 @@ export class Game {
       if (cured) world.markWardenDefeated(biome);
     }
 
-    // A fresh run always begins in the village square; a loaded one resumes
-    // wherever the hero was standing.
-    const dir = continueSave
-      ? new Vector3(state.position[0], state.position[1], state.position[2])
-      : world.villageDir.clone();
+    // A save written while the hero was down would otherwise reload at zero
+    // health and kill them again the instant play resumed, so a downed save
+    // resumes the way a respawn does: at the village, on their feet.
+    const wasDown = continueSave && state.hp <= 0;
+    const dir =
+      continueSave && !wasDown
+        ? new Vector3(state.position[0], state.position[1], state.position[2])
+        : world.villageDir.clone();
     if (dir.lengthSq() < 0.5) dir.copy(world.villageDir);
     player.dir.copy(dir).normalize();
-    const facing = continueSave
-      ? new Vector3(state.facing[0], state.facing[1], state.facing[2])
-      : new Vector3(0, 0, -1);
+    const facing =
+      continueSave && !wasDown
+        ? new Vector3(state.facing[0], state.facing[1], state.facing[2])
+        : new Vector3(0, 0, -1);
     tangentise(facing, player.dir, player.forward);
-    player.dead = false;
+    player.resetCombat();
     player.setLocked(false);
     player.syncWeapon();
     player.syncTransform();
+    player.model.rig.target.reset();
+    player.model.rig.snap();
 
     const stats = derivedStats();
-    actions.setVitals(continueSave ? state.hp : stats.maxHp, continueSave ? state.stamina : stats.maxStamina);
+    const restoredHp = continueSave && !wasDown ? state.hp : Math.round(stats.maxHp * (wasDown ? 0.6 : 1));
+    actions.setVitals(
+      Math.max(1, restoredHp),
+      continueSave && !wasDown ? state.stamina : stats.maxStamina,
+    );
+    if (wasDown) this.ui.hud.toast('You wake by the hearth, aching but whole.', 'info');
 
     world.populate(this.ctx);
 

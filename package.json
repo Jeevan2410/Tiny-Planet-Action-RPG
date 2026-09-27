@@ -5,6 +5,23 @@
   "description": "A compact action-RPG on a tiny walkable planet: real-time combat, leveling, equipment, quests and persistent IndexedDB saves.",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://tiny-planet-action-rpg.vercel.app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Jeevan2410/Tiny-Planet-Action-RPG.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Jeevan2410/Tiny-Planet-Action-RPG/issues"
+  },
+  "keywords": [
+    "game",
+    "action-rpg",
+    "threejs",
+    "typescript",
+    "webgl",
+    "vite",
+    "tiny-planet"
+  ],
   "engines": {
     "node": ">=20.19"
   },
