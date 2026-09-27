@@ -1,6 +1,6 @@
 # Tiny Planet — Shrines of the Blight
 
-**▶ [Play it](https://jeevan2410.github.io/Tiny-Planet-Action-RPG/)**
+**▶ Play it: [Vercel](https://tiny-planet-action-rpg.vercel.app/) · [GitHub Pages](https://jeevan2410.github.io/Tiny-Planet-Action-RPG/)**
 
 A compact 3D action-RPG that takes place on the surface of a small round world.
 You walk all the way around it, fight the blight, level up, find gear, take on a
@@ -231,10 +231,17 @@ RPG rather than a framework.
 
 ## Deploying
 
-Every push to `main` runs `.github/workflows/deploy.yml`, which builds and pushes
-`dist/` to the `gh-pages` branch that GitHub Pages serves. `base: './'` in the Vite
-config keeps asset URLs relative, so the bundle works from a project subpath
-without any rewriting — drop `dist/` on any static host and it runs.
+It is a static bundle, so it runs anywhere. Two targets are live:
+
+- **Vercel** — the project builds from `main` with the Vite preset
+  (output `dist/`).
+- **GitHub Pages** — every push to `main` runs
+  `.github/workflows/deploy.yml`, which builds and force-pushes `dist/` to the
+  `gh-pages` branch Pages serves.
+
+`base: './'` in the Vite config keeps asset URLs relative, so the bundle works
+from a project subpath as well as a domain root without any rewriting — drop
+`dist/` on any static host and it runs.
 
 ## Licence
 
