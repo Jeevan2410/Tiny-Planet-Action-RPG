@@ -1,0 +1,27 @@
+{
+  "name": "tiny-planet-action-rpg",
+  "private": true,
+  "version": "1.0.0",
+  "description": "A compact action-RPG on a tiny walkable planet: real-time combat, leveling, equipment, quests and persistent IndexedDB saves.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dexie": "^4.4.6",
+    "three": "^0.186.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.1"
+  }
+}
