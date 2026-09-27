@@ -101,6 +101,23 @@ export class Player extends Actor {
     );
   }
 
+  /** Current ground speed in world units per second. */
+  get groundSpeed(): number {
+    return this.speed;
+  }
+
+  /** Seconds spent in the current state. */
+  get timeInState(): number {
+    return this.stateTime;
+  }
+
+  /** 1 while the special is fully on cooldown, 0 when it is ready. */
+  get specialCooldownRatio(): number {
+    const special = SPECIALS[this.stats.special];
+    if (!special || special.cooldown <= 0) return 0;
+    return clamp(this.specialCooldown / special.cooldown, 0, 1);
+  }
+
   get busy(): boolean {
     return this.state === 'attack' || this.state === 'special' || this.state === 'dodge' || this.state === 'hurt';
   }

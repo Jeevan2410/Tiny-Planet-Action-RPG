@@ -127,9 +127,9 @@ export function flat(
     transparent: opacity < 1,
     opacity,
     fog: options.fog !== false,
-    side: options.doubleSide ? DoubleSide : undefined,
     depthWrite: opacity >= 1,
   });
+  if (options.doubleSide) material.side = DoubleSide;
   flatCache.set(key, material);
   return material;
 }

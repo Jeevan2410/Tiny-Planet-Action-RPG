@@ -139,7 +139,7 @@ export class Sky {
       }
       const orbit = new Group();
       const dir = randomDirection(rng);
-      const altitude = PLANET_RADIUS + 12 + rng() * 9;
+      const altitude = PLANET_RADIUS + 19 + rng() * 13;
       cluster.position.copy(dir).multiplyScalar(altitude);
       // Lay the cluster flat against the sphere.
       const forward = tangentise(randomDirection(rng), dir);
@@ -165,7 +165,7 @@ export class Sky {
     // Stars fade in as the sky darkens — the Cinder Hollow is where you see them.
     const luminance =
       atmosphere.sky.r * 0.3 + atmosphere.sky.g * 0.55 + atmosphere.sky.b * 0.15;
-    this.starMaterial.opacity = clamp(0.95 - luminance * 4.2, 0, 0.9);
+    this.starMaterial.opacity = clamp(0.95 - luminance * 7.5, 0, 0.9);
 
     // Clouds live in planet space, so undo the camera-follow offset.
     this.clouds.position.copy(cameraPosition).negate();

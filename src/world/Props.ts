@@ -89,17 +89,19 @@ export function buildProp(kind: PropKind, biome: BiomeDef, rng: Rng): BufferGeom
 
   switch (kind) {
     case 'broadTree': {
-      b.place(cyl(0.17, 0.27, 2.3, 6), wood, [0, 1.15, 0]);
-      b.place(ico(1), foliage, [0, 2.75, 0], [1.35, 1.15, 1.35]);
-      b.place(ico(0), foliageAlt, [0.55, 2.3, 0.28], [0.85, 0.75, 0.85]);
-      b.place(ico(0), foliageAlt, [-0.45, 3.35, -0.2], [0.72, 0.68, 0.72]);
+      // Three overlapping 20-triangle icosahedra read as a canopy far more
+      // cheaply than one subdivided blob, and the facets suit the art direction.
+      b.place(cyl(0.17, 0.27, 2.3, 5), wood, [0, 1.15, 0]);
+      b.place(ico(0), foliage, [0, 2.75, 0], [1.4, 1.2, 1.4]);
+      b.place(ico(0), foliageAlt, [0.55, 2.3, 0.28], [0.9, 0.78, 0.9]);
+      b.place(ico(0), foliageAlt, [-0.45, 3.3, -0.2], [0.78, 0.72, 0.78]);
       break;
     }
     case 'pineTree': {
-      b.place(cyl(0.14, 0.2, 1.5, 6), wood, [0, 0.75, 0]);
-      b.place(cone(1.25, 1.7, 7), foliage, [0, 1.75, 0]);
-      b.place(cone(0.98, 1.5, 7), foliageAlt, [0, 2.65, 0]);
-      b.place(cone(0.66, 1.3, 7), foliage, [0, 3.5, 0]);
+      b.place(cyl(0.14, 0.2, 1.5, 5), wood, [0, 0.75, 0]);
+      b.place(cone(1.25, 1.7, 6), foliage, [0, 1.75, 0]);
+      b.place(cone(0.98, 1.5, 6), foliageAlt, [0, 2.65, 0]);
+      b.place(cone(0.66, 1.3, 6), foliage, [0, 3.5, 0]);
       break;
     }
     case 'deadTree': {
@@ -119,7 +121,7 @@ export function buildProp(kind: PropKind, biome: BiomeDef, rng: Rng): BufferGeom
       break;
     }
     case 'boulder': {
-      b.place(ico(1), rock, [0, 0.72, 0], [1.2, 0.92, 1.28], [rng() * 3, rng() * 3, rng() * 3]);
+      b.place(ico(0), rock, [0, 0.72, 0], [1.2, 0.92, 1.28], [rng() * 3, rng() * 3, rng() * 3]);
       b.place(ico(0), shade(rock, 0.86), [0.85, 0.3, 0.5], [0.45, 0.38, 0.45]);
       break;
     }
@@ -171,8 +173,8 @@ export function buildProp(kind: PropKind, biome: BiomeDef, rng: Rng): BufferGeom
       break;
     }
     case 'grassTuft': {
-      for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2 + rng() * 0.6;
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2 + rng() * 0.6;
         const height = 0.34 + rng() * 0.28;
         b.place(
           cone(0.055, height, 4),
@@ -199,8 +201,8 @@ export function buildProp(kind: PropKind, biome: BiomeDef, rng: Rng): BufferGeom
       break;
     }
     case 'mushroom': {
-      b.place(cyl(0.09, 0.12, 0.5, 6), 0xf0e6d2, [0, 0.25, 0]);
-      b.place(ball(8, 5), accent, [0, 0.52, 0], [0.4, 0.3, 0.4]);
+      b.place(cyl(0.09, 0.12, 0.5, 5), 0xf0e6d2, [0, 0.25, 0]);
+      b.place(ball(7, 4), accent, [0, 0.52, 0], [0.4, 0.3, 0.4]);
       b.place(ball(6, 4), 0xfff4e0, [0.14, 0.62, 0.1], [0.07, 0.05, 0.07]);
       b.place(ball(6, 4), 0xfff4e0, [-0.11, 0.6, -0.13], [0.06, 0.04, 0.06]);
       break;

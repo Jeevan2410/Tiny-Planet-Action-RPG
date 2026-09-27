@@ -23,6 +23,30 @@ export class GeoBuilder {
   private colors: number[] = [];
   private normalMatrix = new Matrix3();
   private v = new Vector3();
+  /** Transform stack: everything placed is pre-multiplied by the top entry. */
+  private stack: Matrix4[] = [];
+  private current = new Matrix4();
+  private composed = new Matrix4();
+
+  /**
+   * Push a transform that subsequent `place`/`add` calls are relative to.
+   *
+   * Used to lay a village out on a sphere: each building is authored in flat local
+   * space, then pushed with the transform that stands it upright on the globe, so
+   * the whole village still merges into a single draw call.
+   */
+  pushTransform(matrix: Matrix4): this {
+    this.stack.push(this.current.clone());
+    this.current.multiply(matrix);
+    return this;
+  }
+
+  popTransform(): this {
+    const previous = this.stack.pop();
+    if (previous) this.current.copy(previous);
+    else this.current.identity();
+    return this;
+  }
 
   add(
     geometry: BufferGeometry,
@@ -33,7 +57,10 @@ export class GeoBuilder {
     const source = geometry.index ? geometry.toNonIndexed() : geometry;
     const position = source.getAttribute('position') as BufferAttribute;
     const normal = source.getAttribute('normal') as BufferAttribute | undefined;
-    this.normalMatrix.getNormalMatrix(transform);
+    const matrix = this.stack.length
+      ? this.composed.copy(this.current).multiply(transform)
+      : transform;
+    this.normalMatrix.getNormalMatrix(matrix);
 
     const tint = color instanceof Color ? color : new Color(color);
     const boost = options.emissiveBoost ?? 0;
@@ -42,7 +69,7 @@ export class GeoBuilder {
     const b = Math.min(1, tint.b * (1 + boost));
 
     for (let i = 0; i < position.count; i++) {
-      this.v.fromBufferAttribute(position, i).applyMatrix4(transform);
+      this.v.fromBufferAttribute(position, i).applyMatrix4(matrix);
       this.positions.push(this.v.x, this.v.y, this.v.z);
       if (normal) {
         this.v.fromBufferAttribute(normal, i).applyMatrix3(this.normalMatrix).normalize();

@@ -103,7 +103,7 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
     accent: new Color(0xffd76b),
     atmosphere: atmos(0x4f8fd6, 0xa9d8f5, 0x6f9a5a, 0xc9e4f2, 0xfff3d0, 2.5, 0.42),
     props: {
-      density: 118,
+      density: 95,
       kinds: [
         { kind: 'broadTree', weight: 2, scale: [0.85, 1.25] },
         { kind: 'flowerPatch', weight: 4 },
@@ -133,7 +133,7 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
     accent: new Color(0xb4472f),
     atmosphere: atmos(0x63709e, 0xe0b071, 0x6a5a38, 0xe8c391, 0xffe0a8, 2.35, 0.4),
     props: {
-      density: 205,
+      density: 160,
       kinds: [
         { kind: 'broadTree', weight: 5, scale: [0.9, 1.5] },
         { kind: 'pineTree', weight: 2.2, scale: [0.9, 1.35] },
@@ -168,7 +168,7 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
     accent: new Color(0xefdcae),
     atmosphere: atmos(0x69a8d8, 0xf6d9a0, 0xb08a54, 0xf3dcae, 0xfff0c8, 2.9, 0.5),
     props: {
-      density: 96,
+      density: 80,
       kinds: [
         { kind: 'cactus', weight: 3 },
         { kind: 'palm', weight: 1.6, scale: [0.95, 1.3] },
@@ -203,7 +203,7 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
     accent: new Color(0xc4ecff),
     atmosphere: atmos(0x4d6da8, 0xcfe2f2, 0x93a7b8, 0xd8e6f2, 0xe8f2ff, 2.2, 0.55),
     props: {
-      density: 140,
+      density: 112,
       kinds: [
         { kind: 'pineTree', weight: 4, scale: [0.9, 1.4] },
         { kind: 'iceSpike', weight: 2.6 },
@@ -238,7 +238,7 @@ export const BIOMES: Record<BiomeId, BiomeDef> = {
     accent: new Color(0xff7a3c),
     atmosphere: atmos(0x2b1c39, 0x7d4160, 0x3a2438, 0x6d3d59, 0xffb38a, 1.9, 0.48),
     props: {
-      density: 158,
+      density: 126,
       kinds: [
         { kind: 'deadTree', weight: 3.4 },
         { kind: 'blightThorn', weight: 3.2 },

@@ -92,7 +92,7 @@ const CONFIG: Record<EnemyKind, EnemyConfig> = {
     telegraph: 0.82,
     strike: 0.24,
     recover: 0.95,
-    damageMultiplier: 1.55,
+    damageMultiplier: 1.3,
     knockback: 11,
     staggerResist: 0.65,
     ranged: false,
@@ -136,7 +136,7 @@ const CONFIG: Record<EnemyKind, EnemyConfig> = {
     telegraph: 0.95,
     strike: 0.28,
     recover: 1.0,
-    damageMultiplier: 1.7,
+    damageMultiplier: 1.45,
     knockback: 15,
     staggerResist: 0.88,
     ranged: false,
@@ -193,6 +193,7 @@ export class Enemy extends Actor {
   private despawnTimer = 0;
   private summonedAdds = false;
   private baseColour = new Color(0x000000);
+  private farAccumulator = 0;
 
   constructor(kind: EnemyKind, biome: BiomeId, dir: Vector3) {
     super(dir);
@@ -323,6 +324,34 @@ export class Enemy extends Actor {
   /** Once the fade-out is done the game can take this enemy out of the scene. */
   get readyToRemove(): boolean {
     return this.state === 'dead' && this.despawnTimer <= 0;
+  }
+
+  /**
+   * Level of detail by distance.
+   *
+   * On a globe this small the horizon is only a dozen metres out, so anything
+   * past `VISIBLE_RANGE` cannot be seen at all: it stops rendering, and its brain
+   * ticks a few times a second on pooled time instead of every frame. Beyond
+   * `SLEEP_RANGE` — well outside its own aggro radius — it stops entirely.
+   */
+  static readonly VISIBLE_RANGE = 30;
+  static readonly SLEEP_RANGE = 78;
+
+  /** @returns true if the caller should run a full update this frame. */
+  prepareUpdate(dt: number, playerDir: Vector3): number {
+    const distance = arcAngle(this.dir, playerDir) * PLANET_RADIUS;
+    const visible = distance < Enemy.VISIBLE_RANGE;
+    if (this.group.visible !== visible) this.group.visible = visible;
+    if (visible) {
+      this.farAccumulator = 0;
+      return dt;
+    }
+    if (distance > Enemy.SLEEP_RANGE) return 0;
+    this.farAccumulator += dt;
+    if (this.farAccumulator < 0.25) return 0;
+    const pooled = this.farAccumulator;
+    this.farAccumulator = 0;
+    return pooled;
   }
 
   update(dt: number, rawDt: number, playerDir: Vector3): void {

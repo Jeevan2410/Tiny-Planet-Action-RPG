@@ -19,20 +19,22 @@ export interface Blocker {
   dir: Vector3;
   /** World-unit radius the actor's centre is pushed out to. */
   radius: number;
+  /** How tall it stands, so the camera knows what it can fly over. */
+  height: number;
 }
 
-/** Props big enough to body-block, and how wide they block. */
-const BLOCKER_RADII: Partial<Record<PropKind, number>> = {
-  broadTree: 0.55,
-  pineTree: 0.5,
-  deadTree: 0.42,
-  boulder: 1.15,
-  cactus: 0.48,
-  palm: 0.42,
-  iceSpike: 0.6,
-  crystal: 0.5,
-  lavaVent: 0.8,
-  stump: 0.5,
+/** Props big enough to body-block: how wide they block, and how tall they are. */
+const BLOCKER_SHAPES: Partial<Record<PropKind, { radius: number; height: number }>> = {
+  broadTree: { radius: 0.55, height: 4.3 },
+  pineTree: { radius: 0.5, height: 4.6 },
+  deadTree: { radius: 0.42, height: 3.2 },
+  boulder: { radius: 1.15, height: 1.7 },
+  cactus: { radius: 0.48, height: 2.1 },
+  palm: { radius: 0.42, height: 3.8 },
+  iceSpike: { radius: 0.6, height: 2.4 },
+  crystal: { radius: 0.5, height: 1.9 },
+  lavaVent: { radius: 0.8, height: 0.5 },
+  stump: { radius: 0.5, height: 0.7 },
 };
 
 /** Props that skip shadow casting, because there are a lot of them and they are tiny. */
@@ -129,9 +131,11 @@ export function scatterProps(options: ScatterOptions = {}): ScatterResult {
       mesh.name = `${biome.id}:${entry.kind}`;
       mesh.castShadow = !NO_SHADOW.has(entry.kind);
       mesh.receiveShadow = false;
-      mesh.frustumCulled = false;
+      // One mesh per biome x kind, each covering roughly a fifth of the globe:
+      // frustum culling then drops the three or four biomes behind the camera.
+      mesh.frustumCulled = true;
 
-      const blockRadius = BLOCKER_RADII[entry.kind];
+      const shape = BLOCKER_SHAPES[entry.kind];
       for (let i = 0; i < placements.length; i++) {
         const place = placements[i];
         const up = place.dir;
@@ -144,9 +148,17 @@ export function scatterProps(options: ScatterOptions = {}): ScatterResult {
         dummy.updateMatrix();
         matrix.copy(dummy.matrix);
         mesh.setMatrixAt(i, matrix);
-        if (blockRadius) blockers.push({ dir: up.clone(), radius: blockRadius * place.scale });
+        if (shape) {
+          blockers.push({
+            dir: up.clone(),
+            radius: shape.radius * place.scale,
+            height: shape.height * place.scale,
+          });
+        }
       }
       mesh.instanceMatrix.needsUpdate = true;
+      // InstancedMesh.boundingSphere accounts for the instance matrices, which is
+      // what Frustum.intersectsObject uses.
       mesh.computeBoundingSphere();
       group.add(mesh);
       propCount += placements.length;

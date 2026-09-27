@@ -1,5 +1,6 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import {
+  arcAngle,
   clamp,
   damp,
   PLANET_RADIUS,
@@ -8,14 +9,19 @@ import {
   surfaceHeight,
   tangentise,
 } from '../core/SphereMath';
+import type { Blocker } from '../world/Scatter';
 
-const MIN_PITCH = -0.18;
-const MAX_PITCH = 0.92;
+const MIN_PITCH = -0.12;
+const MAX_PITCH = 0.85;
 const MIN_DISTANCE = 6.5;
 const MAX_DISTANCE = 15;
 
 /**
  * Third-person camera for a spherical world.
+ *
+ * Note the low default pitch: on a globe this small the ground falls away behind
+ * the player, so the camera ends up looking ~18 degrees further down than the same
+ * pitch would give on flat terrain.
  *
  * The rig keeps its own heading as a tangent vector at the player's position. Each
  * frame the heading is re-projected onto the player's (new) tangent plane, which
@@ -26,8 +32,8 @@ const MAX_DISTANCE = 15;
 export class CameraRig {
   /** Tangent direction the camera looks along. */
   heading = new Vector3(0, 0, -1);
-  pitch = 0.36;
-  distance = 10.2;
+  pitch = 0.2;
+  distance = 9.6;
 
   private position = new Vector3();
   private focus = new Vector3();
@@ -75,7 +81,52 @@ export class CameraRig {
     return this.right;
   }
 
-  update(dt: number, playerDir: Vector3, eyeHeight: number): void {
+  /**
+   * Pull the camera in until nothing tall stands between it and the hero.
+   *
+   * Walk from the focus outwards and stop at the first sample that is inside a
+   * blocker the camera is not clearing — a canopy filling the screen is far worse
+   * than a slightly tight camera.
+   */
+  private clearDistance(focus: Vector3, offset: Vector3, wanted: number, blockers: readonly Blocker[]): number {
+    if (blockers.length === 0) return wanted;
+    const playerDir = _v6.copy(focus).normalize();
+
+    // Prefilter once: only blockers the arc could possibly reach.
+    _nearby.length = 0;
+    for (let i = 0; i < blockers.length; i++) {
+      const blocker = blockers[i];
+      if (arcAngle(playerDir, blocker.dir) * PLANET_RADIUS > wanted + blocker.radius + 1) continue;
+      _nearby.push(blocker);
+    }
+    if (_nearby.length === 0) return wanted;
+
+    const steps = 7;
+    let allowed = wanted;
+    for (let step = steps; step >= 2; step--) {
+      const distance = (wanted * step) / steps;
+      const sample = _v7.copy(focus).addScaledVector(offset, distance);
+      const dir = _v8.copy(sample).normalize();
+      const groundHeight = sample.length() - (PLANET_RADIUS + surfaceHeight(dir));
+      let blocked = false;
+      for (let i = 0; i < _nearby.length; i++) {
+        const blocker = _nearby[i];
+        if (groundHeight > blocker.height + 0.25) continue;
+        if (arcAngle(dir, blocker.dir) * PLANET_RADIUS < blocker.radius + 0.5) {
+          blocked = true;
+          break;
+        }
+      }
+      if (!blocked) {
+        allowed = distance;
+        break;
+      }
+      allowed = (wanted * (step - 1)) / steps;
+    }
+    return Math.max(wanted * 0.3, allowed);
+  }
+
+  update(dt: number, playerDir: Vector3, eyeHeight: number, blockers: readonly Blocker[] = []): void {
     this.up.copy(playerDir).normalize();
     // Re-project the heading so it stays tangent as the player moves.
     tangentise(this.heading, this.up, this.heading);
@@ -84,14 +135,16 @@ export class CameraRig {
     const focusRadius = PLANET_RADIUS + surfaceHeight(this.up) + eyeHeight;
     const desiredFocus = _v1.copy(this.up).multiplyScalar(focusRadius);
 
-    const distance = clamp(this.distance + this.distanceBias, MIN_DISTANCE, MAX_DISTANCE + 2);
+    const wanted = clamp(this.distance + this.distanceBias, MIN_DISTANCE, MAX_DISTANCE + 2);
     const back = _v2.copy(this.heading).multiplyScalar(-Math.cos(this.pitch));
     const lift = _v3.copy(this.up).multiplyScalar(Math.sin(this.pitch));
-    const desiredPos = _v4.copy(desiredFocus).addScaledVector(back.add(lift).normalize(), distance);
+    const offset = back.add(lift).normalize();
+    const distance = this.clearDistance(desiredFocus, offset, wanted, blockers);
+    const desiredPos = _v4.copy(desiredFocus).addScaledVector(offset, distance);
 
     // Keep the camera above the terrain it is flying over.
     const camDir = _v5.copy(desiredPos).normalize();
-    const minRadius = PLANET_RADIUS + surfaceHeight(camDir) + 1.35;
+    const minRadius = PLANET_RADIUS + surfaceHeight(camDir) + 1.8;
     if (desiredPos.length() < minRadius) desiredPos.copy(camDir).multiplyScalar(minRadius);
 
     if (!this.initialised) {
@@ -99,7 +152,9 @@ export class CameraRig {
       this.position.copy(desiredPos);
       this.focus.copy(desiredFocus);
     } else {
-      this.position.lerp(desiredPos, damp(dt, 0.075));
+      // Snap in quickly when something blocks the view, ease back out gently.
+      const closing = desiredPos.distanceToSquared(this.focus) < this.position.distanceToSquared(this.focus);
+      this.position.lerp(desiredPos, damp(dt, closing ? 0.028 : 0.11));
       this.focus.lerp(desiredFocus, damp(dt, 0.055));
     }
 
@@ -127,3 +182,7 @@ const _v2 = /* @__PURE__ */ new Vector3();
 const _v3 = /* @__PURE__ */ new Vector3();
 const _v4 = /* @__PURE__ */ new Vector3();
 const _v5 = /* @__PURE__ */ new Vector3();
+const _v6 = /* @__PURE__ */ new Vector3();
+const _v7 = /* @__PURE__ */ new Vector3();
+const _v8 = /* @__PURE__ */ new Vector3();
+const _nearby: Blocker[] = [];
