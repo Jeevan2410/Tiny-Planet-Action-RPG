@@ -37,6 +37,9 @@ export interface DebugSnapshot {
   enemiesVisible: number;
   nearestEnemy: { kind: string; state: string; distance: number } | null;
   distanceToVillage: number;
+  /** Living enemies inside the village fence, and the closest one to its centre. */
+  enemiesInVillage: number;
+  closestEnemyToVillage: number;
   shrines: Record<string, boolean>;
   quests: Record<string, string>;
   hitStop: number;
@@ -140,6 +143,17 @@ export function installDebug(game: Game): void {
       distanceToVillage: internals.world
         ? Number(surfaceDistance(player.dir, internals.world.villageDir).toFixed(2))
         : -1,
+      enemiesInVillage: internals.world
+        ? alive.filter((enemy) => surfaceDistance(enemy.dir, internals.world!.villageDir) < 12).length
+        : 0,
+      closestEnemyToVillage: internals.world
+        ? Number(
+            Math.min(
+              999,
+              ...alive.map((enemy) => surfaceDistance(enemy.dir, internals.world!.villageDir)),
+            ).toFixed(2),
+          )
+        : -1,
       shrines: { ...state.shrines },
       quests,
       hitStop: Number(internals.hitStopTimer.toFixed(3)),
@@ -197,6 +211,31 @@ export function installDebug(game: Game): void {
           .addScaledVector(back, Math.sin(angle))
           .normalize();
         player.forward.copy(npc.dir).addScaledVector(player.dir, -npc.dir.dot(player.dir)).normalize();
+        return true;
+      },
+      /**
+       * Stand `distance` units out from the village centre, on the line towards the
+       * nearest living enemy of a kind — for luring something to the fence.
+       */
+      gotoFromVillage(distance: number, kind = 'mote'): boolean {
+        const player = internals.player;
+        const village = internals.world?.villageDir;
+        if (!player || !village) return false;
+        let best: Vector3 | null = null;
+        let bestD = Infinity;
+        for (const enemy of internals.enemies) {
+          if (enemy.dead || enemy.kind !== kind) continue;
+          const d = surfaceDistance(enemy.dir, village);
+          if (d < bestD) {
+            bestD = d;
+            best = enemy.dir;
+          }
+        }
+        if (!best) return false;
+        const heading = best.clone().addScaledVector(village, -best.dot(village)).normalize();
+        const angle = distance / 30;
+        player.dir.copy(village).multiplyScalar(Math.cos(angle)).addScaledVector(heading, Math.sin(angle)).normalize();
+        player.forward.copy(heading).addScaledVector(player.dir, -heading.dot(player.dir)).normalize();
         return true;
       },
       /** Stand a few paces from the nearest living enemy of a kind. */

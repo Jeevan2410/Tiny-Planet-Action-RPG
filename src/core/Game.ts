@@ -5,7 +5,7 @@ import { Renderer, type Atmosphere, type Quality } from '../render/Renderer';
 import { CameraRig } from '../render/CameraRig';
 import { Vfx } from '../render/Vfx';
 import { World } from '../world/World';
-import { BIOMES, biomeAt, type BiomeDef } from '../world/Biomes';
+import { BIOMES, biomeAt, inSanctuary, type BiomeDef } from '../world/Biomes';
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 import { Npc } from '../entities/Npc';
@@ -66,6 +66,8 @@ export class Game {
   private frames = 0;
   private restoring = false;
   private fps = 0;
+  /** Whether the hero was inside the village last frame, to notice them arriving. */
+  private wasSafe = true;
   /** 'title' until a run starts; used by the debug snapshot. */
   phase: 'title' | 'playing' = 'title';
 
@@ -808,7 +810,22 @@ export class Game {
       void this.save();
     }
     this.renderer.applyAtmosphere(biome.atmosphere, dt);
-    audio.setIntensity(world.combatIntensity(this.ctx, player.dir));
+
+    const safe = inSanctuary(player.dir);
+    if (safe && !this.wasSafe) {
+      // Say so once when it matters: reaching the gate with something on your
+      // heels is exactly when the rule needs explaining.
+      const pursued = this.enemies.some(
+        (enemy) =>
+          !enemy.dead &&
+          (enemy.state === 'chase' || enemy.state === 'telegraph' || enemy.state === 'strike') &&
+          surfaceDistance(enemy.dir, player.dir) < 24,
+      );
+      if (pursued) this.ui.hud.toast('The blight will not cross the fence.', 'good');
+    }
+    this.wasSafe = safe;
+    // Home is quiet: nothing inside the fence can reach you, so neither can the drums.
+    audio.setIntensity(safe ? 0 : world.combatIntensity(this.ctx, player.dir));
   }
 
   private updateUi(rawDt: number): void {
@@ -837,6 +854,7 @@ export class Game {
         specialCooldown: special === 'none' ? 0 : this.specialCooldownRatio(),
         marks: this.compassMarks(),
         touch: this.ui.usingTouch,
+        safe: !player.dead && inSanctuary(player.dir),
       },
       this.renderer.camera,
       this.canvas.clientWidth || window.innerWidth,

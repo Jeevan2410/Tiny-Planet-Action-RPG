@@ -17,6 +17,7 @@ import {
 import { actions, derivedStats, getState, type DerivedStats } from '../state/gameState';
 import { ITEMS, SPECIALS, type SpecialId } from '../rpg/Items';
 import { resolveDamage } from '../rpg/Stats';
+import { inSanctuary } from '../world/Biomes';
 
 export type PlayerState = 'idle' | 'run' | 'attack' | 'dodge' | 'special' | 'hurt' | 'dead' | 'locked';
 
@@ -621,6 +622,10 @@ export class Player extends Actor {
 
   override takeDamage(amount: number): number {
     if (this.dead || this.state === 'dead') return 0;
+    // The village is sanctuary. Enemies are held outside it and will not choose
+    // to attack anyone within, so this only catches the stragglers — a swing
+    // already committed as the hero stepped through the gate.
+    if (inSanctuary(this.dir)) return 0;
     if (this.invulnerableFromDodge) {
       if (!this.dodgedThisRoll) {
         this.dodgedThisRoll = true;

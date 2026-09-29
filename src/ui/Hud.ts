@@ -21,6 +21,8 @@ export interface HudFrame {
   specialCooldown: number;
   marks: CompassMark[];
   touch: boolean;
+  /** Inside the village, where nothing can follow. */
+  safe: boolean;
 }
 
 const QUICK_ITEM: ItemId = 'salve';
@@ -82,6 +84,7 @@ export class Hud {
   private specialCool: HTMLElement;
   private specialName: HTMLElement;
 
+  private sanctuary: HTMLElement;
   private hurtFlash: HTMLElement;
   private lowHealth: HTMLElement;
   private hints: HTMLElement;
@@ -189,6 +192,13 @@ export class Hud {
       ['Esc', 'menu'],
     ]);
 
+    this.sanctuary = el(
+      'div',
+      { class: 'sanctuary ui-panel' },
+      el('span', { class: 'ward', text: '✦' }),
+      el('span', {}, el('b', { text: 'Sanctuary' }), ' · nothing follows you past the fence'),
+    );
+
     this.hurtFlash = el('div', { class: 'hurt-flash' });
     this.lowHealth = el('div', { class: 'low-health' });
     this.lowHealth.style.display = 'none';
@@ -200,6 +210,7 @@ export class Hud {
       this.lowHealth,
       this.hurtFlash,
       vitals,
+      this.sanctuary,
       tracker,
       this.compass,
       this.banner,
@@ -257,8 +268,12 @@ export class Hud {
     this.lastBiome = biome.id;
     this.bannerName.textContent = biome.name;
     this.bannerLine.textContent = biome.tagline;
+    // The meadow is not safe — its motes are the first quest. Only the village
+    // inside the fence is, and the sanctuary badge says so when you are in it.
     this.bannerLevel.textContent =
-      biome.id === 'meadow' ? 'Safe ground' : `Suggested level ${biome.recommendedLevel}+`;
+      biome.id === 'meadow'
+        ? 'Suggested level 1+ · the village is sanctuary'
+        : `Suggested level ${biome.recommendedLevel}+`;
     this.banner.classList.add('show');
     this.bannerTimer = 3.4;
   }
@@ -298,7 +313,8 @@ export class Hud {
     this.glimmer.textContent = String(state.glimmer);
     this.buffNote.textContent = state.buff ? `Ward ${Math.ceil(state.buff.remaining)}s` : '';
 
-    this.lowHealth.style.display = hpRatio < 0.25 && state.hp > 0 ? '' : 'none';
+    this.lowHealth.style.display = hpRatio < 0.25 && state.hp > 0 && !frame.safe ? '' : 'none';
+    show(this.sanctuary, frame.safe);
 
     this.updateTracker();
     this.updateCompass(frame.marks);

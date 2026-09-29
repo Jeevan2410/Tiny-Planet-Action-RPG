@@ -268,6 +268,21 @@ export const VILLAGE_DIR = (() => {
   return d;
 })();
 
+/**
+ * The village is sanctuary: enemies will not target anyone inside this radius and
+ * are physically held outside it. It sits three units beyond the fence (11.6) so
+ * a brute's reach cannot swing over the rails at someone standing just inside.
+ *
+ * Lives here, beside VILLAGE_DIR, because it is a fixed fact about the world that
+ * enemies, projectiles and the hero all need — and this module imports no
+ * entities, so none of them pick up an import cycle by reading it.
+ */
+export const SANCTUARY_RADIUS = 14.5;
+
+export function inSanctuary(dir: Vector3, margin = 0): boolean {
+  return arcAngle(dir, VILLAGE_DIR) * PLANET_RADIUS < SANCTUARY_RADIUS + margin;
+}
+
 /** Which biome owns a point: nearest centre on the sphere (a spherical Voronoi cell). */
 export function biomeAt(dir: Vector3): BiomeDef {
   let best = BIOME_LIST[0];

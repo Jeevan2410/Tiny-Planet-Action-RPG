@@ -12,6 +12,7 @@ import {
 } from '../core/SphereMath';
 import type { GameContext } from '../core/Context';
 import { ITEMS, type ItemId } from '../rpg/Items';
+import { inSanctuary } from '../world/Biomes';
 import { actions } from '../state/gameState';
 
 const { ico, cyl, cone } = PRIMITIVES;
@@ -94,6 +95,13 @@ export class Projectile {
     walk(this.dir, this.heading, this.speed * dt, [this.heading]);
     this.sync();
     this.mesh.rotateY(dt * 9);
+
+    // A bolt loosed at the fence line fizzles on the ward rather than landing in
+    // the village square.
+    if (inSanctuary(this.dir)) {
+      ctx.vfx.burst(this.mesh.position, { count: 8, color: 0xffe6a8, speed: 3, life: 0.35 });
+      return false;
+    }
 
     this.trailTimer -= dt;
     if (this.trailTimer <= 0) {

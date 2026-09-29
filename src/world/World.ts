@@ -4,7 +4,7 @@ import { Sky } from './Sky';
 import { scatterProps, type Blocker } from './Scatter';
 import { buildVillage, localForward, localToDir, type VillageFrame } from './Village';
 import { Shrine } from './Shrine';
-import { BIOMES, BIOME_LIST, biomeAt, VILLAGE_DIR } from './Biomes';
+import { BIOMES, BIOME_LIST, biomeAt, SANCTUARY_RADIUS, VILLAGE_DIR } from './Biomes';
 import { addFlatZone, arcAngle, clamp, PLANET_RADIUS, randomNearby } from '../core/SphereMath';
 import { mulberry32, type Rng } from '../core/Random';
 import { Enemy } from '../entities/Enemy';
@@ -154,7 +154,9 @@ export class World {
     for (let attempt = 0; attempt < 200; attempt++) {
       const dir = randomNearby(this.rng, BIOMES[biome].centre, 26, 9);
       if (biomeAt(dir).id !== biome) continue;
-      if (arcAngle(dir, VILLAGE_DIR) * PLANET_RADIUS < 20) continue;
+      // Clear of the sanctuary by more than the widest patrol loop (7 units), so
+      // nothing's idle wandering brushes the fence.
+      if (arcAngle(dir, VILLAGE_DIR) * PLANET_RADIUS < SANCTUARY_RADIUS + 8) continue;
       let blocked = false;
       for (const blocker of this.blockers) {
         if (arcAngle(dir, blocker.dir) * PLANET_RADIUS < blocker.radius + 1.2) {

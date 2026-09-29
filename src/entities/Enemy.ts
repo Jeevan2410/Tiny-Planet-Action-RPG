@@ -7,12 +7,15 @@ import {
   arcAngle,
   clamp,
   headingTo,
+  offsetDirection,
   PLANET_RADIUS,
   randomNearby,
   rightOf,
   signedTangentAngle,
+  tangentise,
   turnTowards,
 } from '../core/SphereMath';
+import { inSanctuary, SANCTUARY_RADIUS, VILLAGE_DIR } from '../world/Biomes';
 import { mulberry32, type Rng } from '../core/Random';
 import { enemyStats } from '../rpg/Stats';
 import { resolveDamage } from '../rpg/Stats';
@@ -377,39 +380,43 @@ export class Enemy extends Actor {
     if (this.freezeTimer > 0) {
       this.poseFrozen();
       this.model.rig.apply(rawDt, 0.2);
+      this.keepOutOfSanctuary();
       this.syncTransform();
       return;
     }
 
     const distance = arcAngle(this.dir, playerDir) * PLANET_RADIUS;
     const homeDistance = arcAngle(this.dir, this.home) * PLANET_RADIUS;
-    const playerAlive = !this.ctx.player.dead;
+    // Only a living hero outside the village can be hunted. Checking this at the
+    // top of every state is the whole fix for monsters following the hero home:
+    // the old rule was "alive", and a mote's 26-unit leash reached the hearth.
+    const targetable = !this.ctx.player.dead && !inSanctuary(playerDir);
 
     switch (this.state) {
       case 'idle':
-        this.tickIdle(dt, distance, playerAlive);
+        this.tickIdle(dt, distance, targetable);
         break;
       case 'patrol':
-        this.tickPatrol(dt, distance, playerAlive);
+        this.tickPatrol(dt, distance, targetable);
         break;
       case 'chase':
-        this.tickChase(dt, distance, homeDistance, playerDir, playerAlive);
+        this.tickChase(dt, distance, homeDistance, playerDir, targetable);
         break;
       case 'telegraph':
-        this.tickTelegraph(dt, playerDir);
+        this.tickTelegraph(dt, playerDir, targetable);
         break;
       case 'strike':
         this.tickStrike(dt, playerDir);
         break;
       case 'recover':
-        this.tickRecover(dt, distance);
+        this.tickRecover(dt, distance, targetable);
         break;
       case 'hurt':
         this.poseHurt();
-        if (this.stateTime > 0.26) this.enter(distance < this.config.aggroRadius ? 'chase' : 'idle');
+        if (this.stateTime > 0.26) this.enter(this.nextAfterAction(distance, targetable));
         break;
       case 'return':
-        this.tickReturn(dt, homeDistance, distance, playerAlive);
+        this.tickReturn(dt, homeDistance, distance, targetable);
         break;
     }
 
@@ -419,7 +426,35 @@ export class Enemy extends Actor {
     }
 
     this.model.rig.apply(rawDt, this.state === 'telegraph' || this.state === 'strike' ? 0.045 : 0.1);
+    this.keepOutOfSanctuary();
     this.syncTransform();
+  }
+
+  /** Where to go once a swing or a stagger is over. */
+  private nextAfterAction(distance: number, targetable: boolean): EnemyState {
+    if (!targetable) return 'return';
+    return distance < this.config.aggroRadius * 1.4 ? 'chase' : 'idle';
+  }
+
+  /**
+   * Hold the enemy outside the village.
+   *
+   * The targeting rule stops anything choosing to walk in; this catches the rest —
+   * a knockback over the line, or a return trip home whose straight path crosses
+   * the square. Being pushed out radially each frame turns that into sliding round
+   * the boundary, the same way prop collision slides actors round a tree.
+   */
+  private keepOutOfSanctuary(): void {
+    const limit = SANCTUARY_RADIUS + this.radius;
+    const distance = arcAngle(this.dir, VILLAGE_DIR) * PLANET_RADIUS;
+    if (distance >= limit) return;
+    const away =
+      distance < 1e-4
+        ? tangentise(_v2.set(VILLAGE_DIR.y, VILLAGE_DIR.z, VILLAGE_DIR.x), VILLAGE_DIR, _v2)
+        : tangentise(_v2.copy(this.dir).sub(VILLAGE_DIR), VILLAGE_DIR, _v2);
+    offsetDirection(VILLAGE_DIR, away, limit, this.dir);
+    this.dir.normalize();
+    tangentise(this.forward, this.dir, this.forward);
   }
 
   private enter(state: EnemyState): void {
@@ -428,10 +463,10 @@ export class Enemy extends Actor {
     this.strikeDone = false;
   }
 
-  private tickIdle(dt: number, distance: number, playerAlive: boolean): void {
+  private tickIdle(dt: number, distance: number, targetable: boolean): void {
     this.idleTimer -= dt;
     this.poseIdle();
-    if (playerAlive && distance < this.config.aggroRadius) {
+    if (targetable && distance < this.config.aggroRadius) {
       this.enter('chase');
       this.ctx.audio.play('uiMove', { pitch: 0.6, gain: 0.25 });
       return;
@@ -442,8 +477,8 @@ export class Enemy extends Actor {
     }
   }
 
-  private tickPatrol(dt: number, distance: number, playerAlive: boolean): void {
-    if (playerAlive && distance < this.config.aggroRadius) {
+  private tickPatrol(dt: number, distance: number, targetable: boolean): void {
+    if (targetable && distance < this.config.aggroRadius) {
       this.enter('chase');
       return;
     }
@@ -464,9 +499,9 @@ export class Enemy extends Actor {
     distance: number,
     homeDistance: number,
     playerDir: Vector3,
-    playerAlive: boolean,
+    targetable: boolean,
   ): void {
-    if (!playerAlive || homeDistance > this.config.leashRadius) {
+    if (!targetable || homeDistance > this.config.leashRadius) {
       this.enter('return');
       return;
     }
@@ -521,7 +556,13 @@ export class Enemy extends Actor {
     }
   }
 
-  private tickTelegraph(dt: number, playerDir: Vector3): void {
+  private tickTelegraph(dt: number, playerDir: Vector3, targetable: boolean): void {
+    // Stepping through the gate mid-wind-up is a clean escape: the enemy gives up
+    // rather than finishing a swing at someone it is not allowed to hit.
+    if (!targetable) {
+      this.enter('return');
+      return;
+    }
     const heading = headingTo(this.dir, playerDir, _v1);
     // Wind-ups track slowly, so side-stepping a brute genuinely works.
     turnTowards(this.forward, heading, this.dir, this.config.turnRate * 0.35 * dt);
@@ -575,7 +616,7 @@ export class Enemy extends Actor {
     }
   }
 
-  private tickRecover(dt: number, distance: number): void {
+  private tickRecover(dt: number, distance: number, targetable: boolean): void {
     this.poseRecover(clamp(this.stateTime / this.config.recover, 0, 1));
     if (this.config.ranged) {
       // Shuffle sideways between shots so ranged fights are not static.
@@ -585,12 +626,12 @@ export class Enemy extends Actor {
       }
     }
     if (this.stateTime >= this.config.recover) {
-      this.enter(distance < this.config.aggroRadius * 1.4 ? 'chase' : 'idle');
+      this.enter(this.nextAfterAction(distance, targetable));
     }
   }
 
-  private tickReturn(dt: number, homeDistance: number, distance: number, playerAlive: boolean): void {
-    if (playerAlive && distance < this.config.aggroRadius * 0.8) {
+  private tickReturn(dt: number, homeDistance: number, distance: number, targetable: boolean): void {
+    if (targetable && distance < this.config.aggroRadius * 0.8) {
       this.enter('chase');
       return;
     }
